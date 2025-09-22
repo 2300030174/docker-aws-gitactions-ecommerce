@@ -1,17 +1,32 @@
 FROM openjdk:21-slim
-WORKDIR /app/backend
 
-# Install git and Gradle
-RUN apt-get update && apt-get install -y git gradle
+WORKDIR /app
 
-# Clone backend repo
+# Install necessary tools
+RUN apt-get update && apt-get install -y curl
+
+# Clone the backend repository
 RUN git clone https://github.com/2300030174/cicd_project_backend.git .
 
-# Build the backend
-RUN gradle build
+# Debug: Show the project structure
+RUN echo "=== Project Structure ===" && ls -la
+RUN echo "=== Gradle files ===" && find . -name "*.gradle*" -o -name "gradlew" | head -10
 
-# Expose backend port
+# Make gradlew executable if it exists
+RUN if [ -f "./gradlew" ]; then chmod +x ./gradlew; fi
+
+# Build the application
+RUN if [ -f "./gradlew" ]; then \
+        ./gradlew build -x test; \
+    else \
+        gradle build -x test; \
+    fi
+
+# Debug: Show build results
+RUN echo "=== Build output ===" && find . -name "*.jar" | head -10
+
+# Expose the port
 EXPOSE 5001
 
-# Run the Spring Boot app
-CMD ["java", "-jar", "build/libs/backend-0.0.1-SNAPSHOT.jar"]
+# Run the application
+CMD ["java", "-jar", "build/libs/demo-0.0.1-SNAPSHOT.jar"]
