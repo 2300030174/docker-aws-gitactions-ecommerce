@@ -29,7 +29,7 @@ services:
     depends_on:
       - db
     ports:
-      - "5001:5001"
+      - "5001:5001"   # matches server.port
     networks:
       - home_services-net
 
@@ -37,10 +37,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-      args:
-        REACT_APP_BACKEND_URL: http://backend:5001
     container_name: home_services-frontend
     restart: always
+    environment:
+      REACT_APP_BACKEND_URL: http://backend:5001   # optional: for React to know backend URL
     ports:
       - "80:80"
     depends_on:
