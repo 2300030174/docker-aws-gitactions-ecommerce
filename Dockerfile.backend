@@ -1,23 +1,21 @@
-# Use JDK 21 slim image
-FROM eclipse-temurin:21-jdk-slim
-
-# Set working directory
+# Use OpenJDK 21 slim image
+FROM openjdk:21-slim
 WORKDIR /app/backend
 
-# Install git to allow repo cloning
-RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+# Install git
+RUN apt-get update && apt-get install -y git
 
-# Clone your backend repo
+# Clone backend repo
 RUN git clone https://github.com/2300030174/cicd_project_backend.git .
 
-# Make Gradle wrapper executable
+# Make gradlew executable
 RUN chmod +x ./gradlew
 
-# Build the Spring Boot JAR (skip tests for faster build)
+# Build the backend skipping tests
 RUN ./gradlew build -x test
 
 # Expose backend port
 EXPOSE 5001
 
-# Run the Spring Boot application
+# Run the Spring Boot app
 CMD ["java", "-jar", "build/libs/backend-0.0.1-SNAPSHOT.jar"]
