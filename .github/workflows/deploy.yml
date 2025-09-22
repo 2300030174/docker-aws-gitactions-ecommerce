@@ -9,6 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout code
@@ -20,19 +21,241 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
           script: |
-            cd /home/ubuntu/ecommercefullstack
+            echo "=== Starting deployment ==="
+            cd /home/ubuntu
             
-            # Stop existing containers
+            # Install Docker if not present
+            if ! command -v docker &> /dev/null; then
+              echo "Installing Docker..."
+              sudo apt-get update -y
+              sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+              
+              # Add Docker's official GPG key
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+              
+              # Add Docker repository
+              echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+              
+              # Install Docker
+              sudo apt-get update -y
+              sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+              
+              # Start Docker service
+              sudo systemctl enable docker
+              sudo systemctl start docker
+              
+              # Add ubuntu user to docker group
+              sudo usermod -aG docker ubuntu
+            fi
+            
+            # Install Docker Compose if not present
+            if ! command -v docker-compose &> /dev/null; then
+              echo "Installing Docker Compose..."
+              sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+              sudo chmod +x /usr/local/bin/docker-compose
+            fi
+            
+            # Apply group changes without needing to logout
+            newgrp docker || true
+            
+            # Create project directory if it doesn't exist
+            mkdir -p ecommercefullstack
+            cd ecommercefullstack
+            
+            # Copy files from GitHub (since git pull requires authentication)
+            echo "=== Copying files from GitHub action ==="
+            
+            # Stop any running containers
             sudo docker-compose down || true
             
-            # Pull latest code
-            git pull origin main || true
+            # Remove all containers, networks, and volumes
+            sudo docker system prune -f || true
             
-            # Deploy
+            # Check what files we have
+            echo "=== Current directory contents ==="
+            ls -la
+            
+            # If no files exist, clone directly (for first deployment)
+            if [ ! -f "docker-compose.yml" ]; then
+              echo "Cloning repository directly..."
+              sudo apt-get install -y git
+              git clone https://github.com/2300030174/cicd_project_backend.git /tmp/backend
+              git clone https://github.com/2300030174/cicd_project_frontend.git /tmp/frontend
+              
+              # Copy necessary files
+              cp /tmp/backend/pom.xml ./
+              cp /tmp/backend/src/ ./ -r || true
+            fi
+            
+            # Ensure we have the docker-compose file
+            if [ ! -f "docker-compose.yml" ]; then
+              echo "Creating docker-compose.yml..."
+              cat > docker-compose.yml << 'EOF'
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: home_services-db
+    restart: always
+    environment:
+      MYSQL_DATABASE: home_services_db
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - home_services-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: home_services-backend
+    restart: always
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/home_services_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+    depends_on:
+      - db
+    ports:
+      - "5001:5001"
+    networks:
+      - home_services-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: home_services-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - home_services-net
+
+volumes:
+  db_data:
+
+networks:
+  home_services-net:
+    driver: bridge
+EOF
+            fi
+            
+            # Create Dockerfile.backend if it doesn't exist
+            if [ ! -f "Dockerfile.backend" ]; then
+              echo "Creating Dockerfile.backend..."
+              cat > Dockerfile.backend << 'EOF'
+FROM maven:3.9.6-eclipse-temurin-21 AS builder
+
+WORKDIR /app
+
+# Clone backend repo
+RUN git clone https://github.com/2300030174/cicd_project_backend.git .
+
+# Build the application
+RUN mvn clean package -DskipTests
+
+# Runtime stage
+FROM openjdk:21-slim
+
+WORKDIR /app
+
+# Copy the built JAR
+COPY --from=builder /app/target/demo-0.0.1-SNAPSHOT.jar app.jar
+
+# Expose port
+EXPOSE 5001
+
+# Run the application
+CMD ["java", "-jar", "app.jar"]
+EOF
+            fi
+            
+            # Create Dockerfile.frontend if it doesn't exist
+            if [ ! -f "Dockerfile.frontend" ]; then
+              echo "Creating Dockerfile.frontend..."
+              cat > Dockerfile.frontend << 'EOF'
+FROM node:20-alpine AS builder
+WORKDIR /app
+RUN apk add --no-cache git
+RUN git clone https://github.com/2300030174/cicd_project_frontend.git .
+RUN npm install
+RUN npm run build
+
+FROM nginx:alpine
+WORKDIR /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist ./
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+EOF
+            fi
+            
+            # Create nginx.conf if it doesn't exist
+            if [ ! -f "nginx.conf" ]; then
+              echo "Creating nginx.conf..."
+              cat > nginx.conf << 'EOF'
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://backend:5001/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)$ {
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+}
+EOF
+            fi
+            
+            echo "=== Files in directory ==="
+            ls -la
+            
+            echo "=== Deploying with Docker Compose ==="
             sudo docker-compose up -d --build
             
-            # Wait and check status
-            sleep 30
-            sudo docker-compose ps
-            sudo docker-compose logs backend --tail=20
+            echo "=== Waiting for services to start ==="
+            sleep 45
+            
+            echo "=== Container status ==="
+            sudo docker-compose ps -a
+            
+            echo "=== Backend logs ==="
+            sudo docker-compose logs backend --tail=50
+            
+            echo "=== Frontend logs ==="
+            sudo docker-compose logs frontend --tail=20
+            
+            echo "=== Testing backend directly ==="
+            curl -f http://localhost:5001/api/health || echo "Backend direct test failed"
+            
+            echo "=== Testing via nginx ==="
+            curl -f http://localhost/api/health || echo "Nginx proxy test failed"
+            
+            echo "=== Deployment completed ==="
