@@ -1,56 +1,56 @@
-version: "3.9"
-
+version: "3.8"
 services:
-  db:
-    image: mysql:8.0
-    container_name: home_services-db
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: docker.frontend
+    container_name: frontend
     restart: always
-    environment:
-      MYSQL_DATABASE: home_services_db
-      MYSQL_ROOT_PASSWORD: root
-    ports:
-      - "3306:3306"
-    volumes:
-      - db_data:/var/lib/mysql
+    depends_on:
+      - backend
     networks:
-      - home_services-net
+      - app-network
 
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile.backend
-    container_name: home_services-backend
+      context: ./backend
+      dockerfile: docker.backend
+    container_name: backend
     restart: always
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/home_services_db
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
-    depends_on:
-      - db
     ports:
-      - "5001:5001"   # matches server.port
+      - "5001:5001"   # Expose backend
     networks:
-      - home_services-net
+      - app-network
 
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: home_services-frontend
+  db:
+    image: mysql:8
+    container_name: db
     restart: always
     environment:
-      REACT_APP_BACKEND_URL: http://backend:5001   # optional: for React to know backend URL
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: home_services_db
+    ports:
+      - "3306:3306"
+    networks:
+      - app-network
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - "80:80"
     depends_on:
+      - frontend
       - backend
     networks:
-      - home_services-net
-
-volumes:
-  db_data:
+      - app-network
 
 networks:
-  home_services-net:
+  app-network:
     driver: bridge
