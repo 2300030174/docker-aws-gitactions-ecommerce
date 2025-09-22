@@ -9,99 +9,30 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Repo
+      - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Copy repo to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "."
-          target: /home/ubuntu/ecommercefullstack
-
-      - name: Deploy and Debug on EC2
+      - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          script_stop: true
-          debug: true
           script: |
             cd /home/ubuntu/ecommercefullstack
             
-            # Stop any existing containers
-            sudo docker compose down || true
-            
-            # Build and start
-            sudo docker compose up -d --build
-            
-            # Wait for services
-            sleep 30
-            
-            # Debug info
-            echo "=== CONTAINER STATUS ==="
-            sudo docker compose ps
-            
-            echo "=== BACKEND LOGS ==="
-            sudo docker compose logs backend --tail=50
-            
-            echo "=== FRONTEND LOGS ==="  
-            sudo docker compose logs frontend --tail=50
-            
-            echo "=== TEST BACKEND DIRECTLY ==="
-            curl -v http://localhost:5001/api/health || echo "Backend direct test failed"
-            
-            echo "=== TEST VIA NGINX ==="
-            curl -v http://localhost/api/health || echo "Nginx proxy test failed"
-
-# ... existing code ...
-
-      - name: Deploy and Debug on EC2
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script_stop: true
-          debug: true
-          script: |
-            cd /home/ubuntu/ecommercefullstack
-            
-            echo "=== Checking files in directory ==="
-            ls -la
-            echo "=== Checking if Dockerfiles exist ==="
-            ls -la Dockerfile.*
-            
-            echo "=== Stopping existing containers ==="
+            # Stop existing containers
             sudo docker-compose down || true
             
-            echo "=== Building containers with detailed output ==="
-            sudo docker-compose build --no-cache --progress=plain
+            # Pull latest code
+            git pull origin main || true
             
-            echo "=== Starting services ==="
-            sudo docker-compose up -d
+            # Deploy
+            sudo docker-compose up -d --build
             
-            echo "=== Waiting for startup ==="
-            sleep 45
-            
-            echo "=== Checking all container status ==="
-            sudo docker-compose ps -a
-            
-            echo "=== BACKEND CONTAINER LOGS (CRITICAL) ==="
-            sudo docker-compose logs backend --tail=100
-            
-            echo "=== DATABASE CONTAINER LOGS ==="
-            sudo docker-compose logs db --tail=50
-            
-            echo "=== Checking if backend container is running ==="
-            sudo docker-compose exec backend ps aux || echo "Cannot exec into backend"
-            
-            echo "=== Testing database connection from backend ==="
-            sudo docker-compose exec backend curl http://localhost:5001/api/health || echo "Backend health check failed"
-            
-            echo "=== Network inspection ==="
-            sudo docker network inspect home_services-net
+            # Wait and check status
+            sleep 30
+            sudo docker-compose ps
+            sudo docker-compose logs backend --tail=20
