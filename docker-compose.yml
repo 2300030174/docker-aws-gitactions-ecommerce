@@ -10,18 +10,22 @@ services:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_TCP_PORT: 3306
     ports:
-      - "3306:3306"
+      - "3307:3306"  # Changed to avoid conflict with local MySQL
     volumes:
       - db_data:/var/lib/mysql
     networks:
       - home_services-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      timeout: 20s
+      retries: 10
 
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
     container_name: home_services-backend
-    restart: always
+    restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: docker
       SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/home_services_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
@@ -29,22 +33,30 @@ services:
       SPRING_DATASOURCE_PASSWORD: root
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     ports:
       - "5001:5001"
     networks:
       - home_services-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
     container_name: home_services-frontend
-    restart: always
+    restart: unless-stopped
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - home_services-net
 
