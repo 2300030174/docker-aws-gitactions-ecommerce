@@ -1,56 +1,67 @@
-version: "3.8"
 services:
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: docker.frontend
-    container_name: frontend
+  db:
+    image: mysql:8.0
+    container_name: home_services-db
     restart: always
-    depends_on:
-      - backend
+    environment:
+      MYSQL_DATABASE: home_services_db
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
     networks:
-      - app-network
+      - home_services-net
 
   backend:
     build:
-      context: ./backend
-      dockerfile: docker.backend
-    container_name: backend
+      context: .                  # root folder, since Dockerfile.backend is here
+      dockerfile: Dockerfile.backend
+    container_name: home_services-backend
     restart: always
     environment:
       SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/home_services_db
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+    depends_on:
+      - db
     ports:
-      - "5001:5001"   # Expose backend
+      - "5001:5001"
     networks:
-      - app-network
+      - home_services-net
 
-  db:
-    image: mysql:8
-    container_name: db
+  frontend:
+    build:
+      context: .                  # root folder, since Dockerfile.frontend is here
+      dockerfile: Dockerfile.frontend
+    container_name: home_services-frontend
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: home_services_db
+      REACT_APP_BACKEND_URL: http://backend:5001
     ports:
-      - "3306:3306"
+      - "80:80"
+    depends_on:
+      - backend
     networks:
-      - app-network
+      - home_services-net
 
   nginx:
     image: nginx:latest
-    container_name: nginx
+    container_name: home_services-nginx
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
-      - "80:80"
+      - "8080:80"    # You’ll access the app at http://localhost:8080
     depends_on:
       - frontend
       - backend
     networks:
-      - app-network
+      - home_services-net
+
+volumes:
+  db_data:
 
 networks:
-  app-network:
+  home_services-net:
     driver: bridge
