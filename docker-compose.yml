@@ -37,6 +37,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        REACT_APP_BACKEND_URL: http://backend:5001
     container_name: home_services-frontend
     restart: always
     ports:
