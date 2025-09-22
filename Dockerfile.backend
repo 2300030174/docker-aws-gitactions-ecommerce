@@ -3,7 +3,7 @@ FROM openjdk:21-slim
 WORKDIR /app
 
 # Install necessary tools
-RUN apt-get update && apt-get install -y curl
+RUN apt-get update && apt-get install -y git curl && rm -rf /var/lib/apt/lists/*
 
 # Clone the backend repository
 RUN git clone https://github.com/2300030174/cicd_project_backend.git .
@@ -30,3 +30,4 @@ EXPOSE 5001
 
 # Run the application
 CMD ["java", "-jar", "build/libs/demo-0.0.1-SNAPSHOT.jar"]
+
