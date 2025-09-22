@@ -1,10 +1,10 @@
-# Use Gradle + OpenJDK image
-FROM gradle:8.3-jdk21-alpine
+# Use Gradle + OpenJDK 21 (Debian-based)
+FROM gradle:8.3-jdk21
 
 WORKDIR /app
 
 # Install git
-RUN apk add --no-cache git
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
 # Clone the backend repo
 RUN git clone https://github.com/2300030174/cicd_project_backend.git .
@@ -15,5 +15,5 @@ RUN gradle build -x test
 # Expose backend port
 EXPOSE 5001
 
-# Run the application
+# Run the Spring Boot application
 CMD ["java", "-jar", "build/libs/demo-0.0.1-SNAPSHOT.jar"]
