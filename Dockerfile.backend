@@ -1,16 +1,23 @@
+# Use Gradle 8.3 + OpenJDK 20 (Debian-based)
 FROM gradle:8.3-jdk20
 
 WORKDIR /app
 
-# Install git
+# Install git if not already
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
-# Clone backend
+# Clone backend repo
 RUN git clone https://github.com/2300030174/cicd_project_backend.git .
 
-# Build the project
-RUN gradle build -x test
+# If gradlew exists, use it; otherwise use gradle from image
+RUN if [ -f "./gradlew" ]; then \
+        chmod +x ./gradlew && ./gradlew build -x test; \
+    else \
+        gradle build -x test; \
+    fi
 
+# Expose backend port
 EXPOSE 5001
 
+# Run Spring Boot app
 CMD ["java", "-jar", "build/libs/demo-0.0.1-SNAPSHOT.jar"]
