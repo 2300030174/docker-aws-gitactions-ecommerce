@@ -1,33 +1,29 @@
+# Use OpenJDK 21 slim image
 FROM openjdk:21-slim
 
 WORKDIR /app
 
-# Install necessary tools
-RUN apt-get update && apt-get install -y git curl && rm -rf /var/lib/apt/lists/*
+# Install necessary tools: git, curl, unzip (required by gradlew)
+RUN apt-get update && apt-get install -y git curl unzip && rm -rf /var/lib/apt/lists/*
 
 # Clone the backend repository
 RUN git clone https://github.com/2300030174/cicd_project_backend.git .
 
-# Debug: Show the project structure
-RUN echo "=== Project Structure ===" && ls -la
-RUN echo "=== Gradle files ===" && find . -name "*.gradle*" -o -name "gradlew" | head -10
-
 # Make gradlew executable if it exists
 RUN if [ -f "./gradlew" ]; then chmod +x ./gradlew; fi
 
-# Build the application
+# Build the Spring Boot application using gradlew
 RUN if [ -f "./gradlew" ]; then \
         ./gradlew build -x test; \
     else \
-        gradle build -x test; \
+        echo "Gradle wrapper not found, please install Gradle" && exit 1; \
     fi
 
-# Debug: Show build results
+# Debug: list built JAR
 RUN echo "=== Build output ===" && find . -name "*.jar" | head -10
 
-# Expose the port
+# Expose backend port
 EXPOSE 5001
 
-# Run the application
+# Run the Spring Boot application
 CMD ["java", "-jar", "build/libs/demo-0.0.1-SNAPSHOT.jar"]
-
